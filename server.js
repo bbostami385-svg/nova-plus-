@@ -9,30 +9,35 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // -----------------------
-// Middleware
-// -----------------------
 app.use(cors());
 app.use(express.json());
 
 // -----------------------
-// MongoDB Connection
+// MongoDB
 // -----------------------
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected ✅"))
   .catch(err => console.log("MongoDB error ❌", err));
 
 // -----------------------
-// Models
+// MODELS
 // -----------------------
 const UserSchema = new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
   password: String,
+
   followers: [String],
   following: [String],
+
+  friendRequests: [String],
+  sentRequests: [String],
+  friends: [String],
+
+  isProfessional: { type: Boolean, default: false },
+
   createdAt: { type: Date, default: Date.now }
 });
-
 const User = mongoose.model("User", UserSchema);
 
 const PostSchema = new mongoose.Schema({
@@ -40,34 +45,41 @@ const PostSchema = new mongoose.Schema({
   text: String,
   image: String,
   video: String,
+
   likes: [String],
+
+  comments: [
+    {
+      userId: String,
+      text: String,
+      createdAt: { type: Date, default: Date.now }
+    }
+  ],
+
   sharedFrom: { type: String, default: null },
   createdAt: { type: Date, default: Date.now }
 });
-
 const Post = mongoose.model("Post", PostSchema);
 
 // -----------------------
-// Auth Middleware
+// AUTH MIDDLEWARE
 // -----------------------
 const auth = (req, res, next) => {
   const token = req.header("Authorization")?.split(" ")[1];
 
-  if (!token) {
-    return res.status(401).json({ msg: "No token" });
-  }
+  if (!token) return res.status(401).json({ msg: "No token" });
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
-  } catch (err) {
-    return res.status(401).json({ msg: "Invalid token" });
+  } catch {
+    res.status(401).json({ msg: "Invalid token" });
   }
 };
 
 // -----------------------
-// AUTH ROUTES
+// AUTH
 // -----------------------
 app.post("/api/auth/signup", async (req, res) => {
   try {
@@ -78,17 +90,12 @@ app.post("/api/auth/signup", async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
 
-    const user = new User({
-      name,
-      email,
-      password: hash
-    });
-
+    const user = new User({ name, email, password: hash });
     await user.save();
 
     res.json({ msg: "Signup success", user });
 
-  } catch (err) {
+  } catch {
     res.status(500).json({ msg: "Server error" });
   }
 });
@@ -111,13 +118,13 @@ app.post("/api/auth/login", async (req, res) => {
 
     res.json({ msg: "Login success", token, user });
 
-  } catch (err) {
+  } catch {
     res.status(500).json({ msg: "Server error" });
   }
 });
 
 // -----------------------
-// POSTS ROUTES
+// POSTS
 // -----------------------
 
 // CREATE POST
@@ -150,7 +157,7 @@ app.get("/api/posts", async (req, res) => {
   }
 });
 
-// LIKE / UNLIKE
+// LIKE
 app.put("/api/posts/:id/like", auth, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
@@ -171,12 +178,30 @@ app.put("/api/posts/:id/like", auth, async (req, res) => {
   }
 });
 
-// DELETE POST
-app.delete("/api/posts/:id", auth, async (req, res) => {
+// COMMENT
+app.post("/api/posts/:id/comment", auth, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id);
 
-    if (!post) return res.status(404).json({ msg: "Not found" });
+    if (!post) return res.status(404).json({ msg: "Post not found" });
+
+    post.comments.push({
+      userId: req.user.id,
+      text: req.body.text
+    });
+
+    await post.save();
+    res.json(post);
+
+  } catch {
+    res.status(500).json({ msg: "Error adding comment" });
+  }
+});
+
+// DELETE
+app.delete("/api/posts/:id", auth, async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
 
     if (post.userId !== req.user.id)
       return res.status(403).json({ msg: "Not allowed" });
@@ -189,12 +214,10 @@ app.delete("/api/posts/:id", auth, async (req, res) => {
   }
 });
 
-// SHARE POST
+// SHARE
 app.post("/api/posts/:id/share", auth, async (req, res) => {
   try {
     const original = await Post.findById(req.params.id);
-
-    if (!original) return res.status(404).json({ msg: "Post not found" });
 
     const post = new Post({
       userId: req.user.id,
@@ -213,7 +236,7 @@ app.post("/api/posts/:id/share", auth, async (req, res) => {
 });
 
 // -----------------------
-// USER ROUTES
+// USERS
 // -----------------------
 
 // PROFILE
@@ -227,9 +250,6 @@ app.post("/api/users/:id/follow", auth, async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
     const me = await User.findById(req.user.id);
-
-    if (!user || !me)
-      return res.status(404).json({ msg: "User not found" });
 
     if (!user.followers.includes(me._id.toString())) {
       user.followers.push(me._id);
@@ -250,14 +270,77 @@ app.post("/api/users/:id/follow", auth, async (req, res) => {
 });
 
 // -----------------------
-// HOME
+// FRIEND REQUEST
+// -----------------------
+app.post("/api/users/:id/add-friend", auth, async (req, res) => {
+  const target = await User.findById(req.params.id);
+  const me = await User.findById(req.user.id);
+
+  if (!target || !me)
+    return res.status(404).json({ msg: "User not found" });
+
+  if (target.friendRequests.includes(me._id.toString()))
+    return res.json({ msg: "Already requested" });
+
+  target.friendRequests.push(me._id);
+  me.sentRequests.push(target._id);
+
+  await target.save();
+  await me.save();
+
+  res.json({ msg: "Friend request sent" });
+});
+
+app.post("/api/users/:id/accept", auth, async (req, res) => {
+  const me = await User.findById(req.user.id);
+  const sender = await User.findById(req.params.id);
+
+  me.friendRequests = me.friendRequests.filter(id => id != sender._id);
+  sender.sentRequests = sender.sentRequests.filter(id => id != me._id);
+
+  me.friends.push(sender._id);
+  sender.friends.push(me._id);
+
+  await me.save();
+  await sender.save();
+
+  res.json({ msg: "Friend added" });
+});
+
+app.post("/api/users/:id/cancel", auth, async (req, res) => {
+  const me = await User.findById(req.user.id);
+  const target = await User.findById(req.params.id);
+
+  me.sentRequests = me.sentRequests.filter(id => id != target._id);
+  target.friendRequests = target.friendRequests.filter(id => id != me._id);
+
+  await me.save();
+  await target.save();
+
+  res.json({ msg: "Request cancelled" });
+});
+
+// -----------------------
+// PROFESSIONAL MODE
+// -----------------------
+app.put("/api/users/professional", auth, async (req, res) => {
+  const user = await User.findById(req.user.id);
+
+  user.isProfessional = !user.isProfessional;
+
+  await user.save();
+
+  res.json({
+    msg: "Professional mode updated",
+    isProfessional: user.isProfessional
+  });
+});
+
 // -----------------------
 app.get("/", (req, res) => {
   res.send("NovaPlus Social Backend 🚀");
 });
 
-// -----------------------
-// START SERVER
 // -----------------------
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT} 🚀`);
