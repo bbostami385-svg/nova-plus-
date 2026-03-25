@@ -34,6 +34,13 @@ const UserSchema = new mongoose.Schema({
   sentRequests: [String],
   friends: [String],
 
+  notifications: [
+    {
+      text: String,
+      createdAt: { type: Date, default: Date.now }
+    }
+  ],
+
   isProfessional: { type: Boolean, default: false },
 
   createdAt: { type: Date, default: Date.now }
@@ -52,7 +59,14 @@ const PostSchema = new mongoose.Schema({
     {
       userId: String,
       text: String,
-      createdAt: { type: Date, default: Date.now }
+      createdAt: { type: Date, default: Date.now },
+      replies: [
+        {
+          userId: String,
+          text: String,
+          createdAt: { type: Date, default: Date.now }
+        }
+      ]
     }
   ],
 
@@ -61,12 +75,29 @@ const PostSchema = new mongoose.Schema({
 });
 const Post = mongoose.model("Post", PostSchema);
 
+// Story
+const StorySchema = new mongoose.Schema({
+  userId: String,
+  image: String,
+  video: String,
+  createdAt: { type: Date, default: Date.now, expires: 86400 }
+});
+const Story = mongoose.model("Story", StorySchema);
+
+// Message
+const MessageSchema = new mongoose.Schema({
+  senderId: String,
+  receiverId: String,
+  text: String,
+  createdAt: { type: Date, default: Date.now }
+});
+const Message = mongoose.model("Message", MessageSchema);
+
 // -----------------------
 // AUTH MIDDLEWARE
 // -----------------------
 const auth = (req, res, next) => {
   const token = req.header("Authorization")?.split(" ")[1];
-
   if (!token) return res.status(401).json({ msg: "No token" });
 
   try {
@@ -79,7 +110,7 @@ const auth = (req, res, next) => {
 };
 
 // -----------------------
-// AUTH
+// AUTH ROUTES
 // -----------------------
 app.post("/api/auth/signup", async (req, res) => {
   try {
@@ -89,10 +120,9 @@ app.post("/api/auth/signup", async (req, res) => {
     if (exist) return res.status(400).json({ msg: "Email exists" });
 
     const hash = await bcrypt.hash(password, 10);
-
     const user = new User({ name, email, password: hash });
-    await user.save();
 
+    await user.save();
     res.json({ msg: "Signup success", user });
 
   } catch {
@@ -104,7 +134,7 @@ app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email);
     if (!user) return res.status(400).json({ msg: "User not found" });
 
     const ok = await bcrypt.compare(password, user.password);
@@ -126,8 +156,6 @@ app.post("/api/auth/login", async (req, res) => {
 // -----------------------
 // POSTS
 // -----------------------
-
-// CREATE POST
 app.post("/api/posts", auth, async (req, res) => {
   try {
     const { text, image, video } = req.body;
@@ -147,140 +175,159 @@ app.post("/api/posts", auth, async (req, res) => {
   }
 });
 
-// GET POSTS
 app.get("/api/posts", async (req, res) => {
-  try {
-    const posts = await Post.find().sort({ createdAt: -1 });
-    res.json(posts);
-  } catch {
-    res.status(500).json({ msg: "Error fetching posts" });
-  }
+  const posts = await Post.find().sort({ createdAt: -1 });
+  res.json(posts);
 });
 
-// LIKE
 app.put("/api/posts/:id/like", auth, async (req, res) => {
-  try {
-    const post = await Post.findById(req.params.id);
+  const post = await Post.findById(req.params.id);
 
-    if (!post) return res.status(404).json({ msg: "Post not found" });
-
-    if (!post.likes.includes(req.user.id)) {
-      post.likes.push(req.user.id);
-    } else {
-      post.likes = post.likes.filter(id => id !== req.user.id);
-    }
-
-    await post.save();
-    res.json(post);
-
-  } catch {
-    res.status(500).json({ msg: "Error" });
+  if (!post.likes.includes(req.user.id)) {
+    post.likes.push(req.user.id);
+  } else {
+    post.likes = post.likes.filter(id => id !== req.user.id);
   }
+
+  await post.save();
+  res.json(post);
 });
 
 // COMMENT
 app.post("/api/posts/:id/comment", auth, async (req, res) => {
-  try {
-    const post = await Post.findById(req.params.id);
+  const post = await Post.findById(req.params.id);
 
-    if (!post) return res.status(404).json({ msg: "Post not found" });
+  post.comments.push({
+    userId: req.user.id,
+    text: req.body.text
+  });
 
-    post.comments.push({
-      userId: req.user.id,
-      text: req.body.text
-    });
-
-    await post.save();
-    res.json(post);
-
-  } catch {
-    res.status(500).json({ msg: "Error adding comment" });
-  }
+  await post.save();
+  res.json(post);
 });
 
-// DELETE
+// DELETE COMMENT
+app.delete("/api/posts/:postId/comment/:commentId", auth, async (req, res) => {
+  const post = await Post.findById(req.params.postId);
+
+  post.comments = post.comments.filter(
+    c => c._id.toString() !== req.params.commentId
+  );
+
+  await post.save();
+  res.json(post);
+});
+
+// REPLY COMMENT
+app.post("/api/posts/:postId/comment/:commentId/reply", auth, async (req, res) => {
+  const post = await Post.findById(req.params.postId);
+  const comment = post.comments.id(req.params.commentId);
+
+  comment.replies.push({
+    userId: req.user.id,
+    text: req.body.text
+  });
+
+  await post.save();
+  res.json(post);
+});
+
+// DELETE POST
 app.delete("/api/posts/:id", auth, async (req, res) => {
-  try {
-    const post = await Post.findById(req.params.id);
+  const post = await Post.findById(req.params.id);
 
-    if (post.userId !== req.user.id)
-      return res.status(403).json({ msg: "Not allowed" });
+  if (post.userId !== req.user.id)
+    return res.status(403).json({ msg: "Not allowed" });
 
-    await post.deleteOne();
-    res.json({ msg: "Deleted" });
-
-  } catch {
-    res.status(500).json({ msg: "Error" });
-  }
+  await post.deleteOne();
+  res.json({ msg: "Deleted" });
 });
 
 // SHARE
 app.post("/api/posts/:id/share", auth, async (req, res) => {
-  try {
-    const original = await Post.findById(req.params.id);
+  const original = await Post.findById(req.params.id);
 
-    const post = new Post({
-      userId: req.user.id,
-      text: original.text,
-      image: original.image,
-      video: original.video,
-      sharedFrom: original._id
-    });
+  const post = new Post({
+    userId: req.user.id,
+    text: original.text,
+    image: original.image,
+    video: original.video,
+    sharedFrom: original._id
+  });
 
-    await post.save();
-    res.json(post);
+  await post.save();
+  res.json(post);
+});
 
-  } catch {
-    res.status(500).json({ msg: "Error sharing post" });
-  }
+// -----------------------
+// STORY
+// -----------------------
+app.post("/api/stories", auth, async (req, res) => {
+  const story = new Story({
+    userId: req.user.id,
+    image: req.body.image,
+    video: req.body.video
+  });
+
+  await story.save();
+  res.json(story);
+});
+
+app.get("/api/stories", async (req, res) => {
+  const stories = await Story.find().sort({ createdAt: -1 });
+  res.json(stories);
+});
+
+// -----------------------
+// CHAT
+// -----------------------
+app.post("/api/messages", auth, async (req, res) => {
+  const msg = new Message({
+    senderId: req.user.id,
+    receiverId: req.body.receiverId,
+    text: req.body.text
+  });
+
+  await msg.save();
+  res.json(msg);
+});
+
+app.get("/api/messages/:userId", auth, async (req, res) => {
+  const msgs = await Message.find({
+    $or: [
+      { senderId: req.user.id, receiverId: req.params.userId },
+      { senderId: req.params.userId, receiverId: req.user.id }
+    ]
+  });
+
+  res.json(msgs);
 });
 
 // -----------------------
 // USERS
 // -----------------------
-
-// PROFILE
-app.get("/api/users/:id", async (req, res) => {
-  const user = await User.findById(req.params.id).select("-password");
-  res.json(user);
-});
-
-// FOLLOW / UNFOLLOW
 app.post("/api/users/:id/follow", auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
-    const me = await User.findById(req.user.id);
+  const user = await User.findById(req.params.id);
+  const me = await User.findById(req.user.id);
 
-    if (!user.followers.includes(me._id.toString())) {
-      user.followers.push(me._id);
-      me.following.push(user._id);
-    } else {
-      user.followers = user.followers.filter(f => f !== me._id.toString());
-      me.following = me.following.filter(f => f !== user._id.toString());
-    }
-
-    await user.save();
-    await me.save();
-
-    res.json({ msg: "Follow updated" });
-
-  } catch {
-    res.status(500).json({ msg: "Error" });
+  if (!user.followers.includes(me._id.toString())) {
+    user.followers.push(me._id);
+    me.following.push(user._id);
+  } else {
+    user.followers = user.followers.filter(f => f !== me._id.toString());
+    me.following = me.following.filter(f => f !== user._id.toString());
   }
+
+  await user.save();
+  await me.save();
+
+  res.json({ msg: "Follow updated" });
 });
 
-// -----------------------
 // FRIEND REQUEST
-// -----------------------
 app.post("/api/users/:id/add-friend", auth, async (req, res) => {
   const target = await User.findById(req.params.id);
   const me = await User.findById(req.user.id);
-
-  if (!target || !me)
-    return res.status(404).json({ msg: "User not found" });
-
-  if (target.friendRequests.includes(me._id.toString()))
-    return res.json({ msg: "Already requested" });
 
   target.friendRequests.push(me._id);
   me.sentRequests.push(target._id);
@@ -288,15 +335,13 @@ app.post("/api/users/:id/add-friend", auth, async (req, res) => {
   await target.save();
   await me.save();
 
-  res.json({ msg: "Friend request sent" });
+  res.json({ msg: "Request sent" });
 });
 
+// ACCEPT
 app.post("/api/users/:id/accept", auth, async (req, res) => {
   const me = await User.findById(req.user.id);
   const sender = await User.findById(req.params.id);
-
-  me.friendRequests = me.friendRequests.filter(id => id != sender._id);
-  sender.sentRequests = sender.sentRequests.filter(id => id != me._id);
 
   me.friends.push(sender._id);
   sender.friends.push(me._id);
@@ -307,33 +352,14 @@ app.post("/api/users/:id/accept", auth, async (req, res) => {
   res.json({ msg: "Friend added" });
 });
 
-app.post("/api/users/:id/cancel", auth, async (req, res) => {
-  const me = await User.findById(req.user.id);
-  const target = await User.findById(req.params.id);
-
-  me.sentRequests = me.sentRequests.filter(id => id != target._id);
-  target.friendRequests = target.friendRequests.filter(id => id != me._id);
-
-  await me.save();
-  await target.save();
-
-  res.json({ msg: "Request cancelled" });
-});
-
-// -----------------------
 // PROFESSIONAL MODE
-// -----------------------
 app.put("/api/users/professional", auth, async (req, res) => {
   const user = await User.findById(req.user.id);
 
   user.isProfessional = !user.isProfessional;
-
   await user.save();
 
-  res.json({
-    msg: "Professional mode updated",
-    isProfessional: user.isProfessional
-  });
+  res.json({ isProfessional: user.isProfessional });
 });
 
 // -----------------------
