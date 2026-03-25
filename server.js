@@ -101,34 +101,33 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // -----------------------
-// Post Routes
+// Posts Routes
 // -----------------------
+
+// 👉 এখানে POST (create post)
 app.post("/api/posts", auth, async (req, res) => {
-  try {
-    const { text, image, video } = req.body;
-
-    const post = new Post({
-      userId: req.user.id,
-      text,
-      image,
-      video
-    });
-
-    await post.save();
-    res.json(post);
-
-  } catch {
-    res.status(500).json({ msg: "Error" });
-  }
+  ...
 });
 
-app.get("/api/posts", async (req, res) => {
-  try {
-    const posts = await Post.find().sort({ createdAt: -1 });
-    res.json(posts);
-  } catch {
-    res.status(500).json({ msg: "Error" });
+// 👉 এখানে এটা বসাবে (LIKE ROUTE)
+app.put("/api/posts/:id/like", auth, async (req, res) => {
+  const post = await Post.findById(req.params.id);
+
+  if (!post) return res.status(404).json({ msg: "Post not found" });
+
+  if (!post.likes.includes(req.user.id)) {
+    post.likes.push(req.user.id);
+  } else {
+    post.likes = post.likes.filter(id => id !== req.user.id);
   }
+
+  await post.save();
+  res.json(post);
+});
+
+// 👉 তারপর GET posts
+app.get("/api/posts", async (req, res) => {
+  ...
 });
 
 // ❤️ Like
