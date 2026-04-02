@@ -8,11 +8,45 @@ function Messenger() {
   const [userId, setUserId] = useState("");
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [typingUser, setTypingUser] = useState("");
 
   const token = localStorage.getItem("token");
+  const myId = localStorage.getItem("userId");
 
   // -----------------------
-  // LOAD OLD MESSAGES (API)
+  // SOCKET REGISTER
+  // -----------------------
+  useEffect(() => {
+    if (myId) {
+      socket.emit("addUser", myId);
+    }
+
+    socket.on("getUsers", (users) => {
+      setOnlineUsers(users);
+    });
+
+    socket.on("receiveMessage", (msg) => {
+      setMessages((prev) => [...prev, msg]);
+    });
+
+    socket.on("typing", (data) => {
+      setTypingUser(data.senderId);
+
+      setTimeout(() => {
+        setTypingUser("");
+      }, 1000);
+    });
+
+    return () => {
+      socket.off("getUsers");
+      socket.off("receiveMessage");
+      socket.off("typing");
+    };
+  }, [myId]);
+
+  // -----------------------
+  // LOAD OLD MESSAGES
   // -----------------------
   const loadMessages = async () => {
     try {
@@ -28,33 +62,22 @@ function Messenger() {
   };
 
   // -----------------------
-  // RECEIVE REAL-TIME MESSAGE
-  // -----------------------
-  useEffect(() => {
-    socket.on("receiveMessage", (msg) => {
-      setMessages((prev) => [...prev, msg]);
-    });
-
-    return () => socket.off("receiveMessage");
-  }, []);
-
-  // -----------------------
   // SEND MESSAGE
   // -----------------------
   const sendMessage = async () => {
     if (!text) return;
 
     const msg = {
-      senderId: "me",
+      senderId: myId,
       receiverId: userId,
       text,
       createdAt: new Date()
     };
 
-    // 🔥 REAL-TIME SEND
+    // real-time
     socket.emit("sendMessage", msg);
 
-    // 🔥 DATABASE SAVE
+    // DB save
     try {
       await fetch(`${API}/api/messages`, {
         method: "POST",
@@ -71,7 +94,6 @@ function Messenger() {
       console.log("DB save failed");
     }
 
-    // UI update
     setMessages((prev) => [...prev, msg]);
     setText("");
   };
@@ -79,6 +101,9 @@ function Messenger() {
   return (
     <div style={{ padding: "20px" }}>
       <h2>Messenger 💬 (Live)</h2>
+
+      {/* ONLINE USERS */}
+      <p>🟢 Online Users: {onlineUsers.length}</p>
 
       <input
         placeholder="Enter userId"
@@ -100,7 +125,7 @@ function Messenger() {
           <div
             key={i}
             style={{
-              textAlign: m.senderId === "me" ? "right" : "left"
+              textAlign: m.senderId === myId ? "right" : "left"
             }}
           >
             <p style={{
@@ -113,11 +138,25 @@ function Messenger() {
             </p>
           </div>
         ))}
+
+        {/* TYPING INDICATOR */}
+        {typingUser && (
+          <p><i>Typing...</i></p>
+        )}
       </div>
 
+      {/* INPUT */}
       <input
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+
+          // typing emit
+          socket.emit("typing", {
+            senderId: myId,
+            receiverId: userId
+          });
+        }}
         placeholder="Type message..."
       />
 
