@@ -12,9 +12,6 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 
-// ✅ PORT
-const PORT = process.env.PORT || 5000;
-
 // 🔥 SOCKET INIT
 const io = new Server(server, {
   cors: {
@@ -22,9 +19,9 @@ const io = new Server(server, {
   }
 });
 
-const users = {}; // online users
-
 // -----------------------
+const PORT = process.env.PORT || 5000;
+
 app.use(cors());
 app.use(express.json());
 
@@ -81,44 +78,32 @@ const auth = (req, res, next) => {
 };
 
 // -----------------------
-// SOCKET LOGIC
+// 🔥 SOCKET ROOM CHAT
 // -----------------------
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // register user
-  socket.on("addUser", (userId) => {
-    users[userId] = socket.id;
-    io.emit("getUsers", Object.keys(users));
+  // JOIN ROOM
+  socket.on("joinRoom", ({ senderId, receiverId }) => {
+    const roomId = [senderId, receiverId].sort().join("_");
+    socket.join(roomId);
   });
 
-  // send message
+  // SEND MESSAGE
   socket.on("sendMessage", (data) => {
-    const receiverSocket = users[data.receiverId];
+    const roomId = [data.senderId, data.receiverId].sort().join("_");
 
-    if (receiverSocket) {
-      io.to(receiverSocket).emit("receiveMessage", data);
-    }
+    io.to(roomId).emit("receiveMessage", data);
   });
 
-  // typing
+  // TYPING
   socket.on("typing", (data) => {
-    const receiverSocket = users[data.receiverId];
+    const roomId = [data.senderId, data.receiverId].sort().join("_");
 
-    if (receiverSocket) {
-      io.to(receiverSocket).emit("typing", data);
-    }
+    socket.to(roomId).emit("typing", data);
   });
 
-  // disconnect
   socket.on("disconnect", () => {
-    for (const userId in users) {
-      if (users[userId] === socket.id) {
-        delete users[userId];
-        break;
-      }
-    }
-    io.emit("getUsers", Object.keys(users));
     console.log("User disconnected:", socket.id);
   });
 });
@@ -137,6 +122,7 @@ app.post("/api/auth/signup", async (req, res) => {
     const user = new User({ name, email, password: hash });
 
     await user.save();
+
     res.json({ msg: "Signup success", user });
 
   } catch {
@@ -186,46 +172,6 @@ app.post("/api/users/:id/follow", auth, async (req, res) => {
   await me.save();
 
   res.json({ msg: "Follow updated" });
-});
-
-// FRIEND REQUEST
-app.post("/api/users/:id/add-friend", auth, async (req, res) => {
-  const target = await User.findById(req.params.id);
-  const me = await User.findById(req.user.id);
-
-  if (!target.friendRequests.includes(me._id)) {
-    target.friendRequests.push(me._id);
-    me.sentRequests.push(target._id);
-  }
-
-  await target.save();
-  await me.save();
-
-  res.json({ msg: "Request sent" });
-});
-
-// ACCEPT FRIEND
-app.post("/api/users/:id/accept", auth, async (req, res) => {
-  const me = await User.findById(req.user.id);
-  const sender = await User.findById(req.params.id);
-
-  me.friends.push(sender._id);
-  sender.friends.push(me._id);
-
-  await me.save();
-  await sender.save();
-
-  res.json({ msg: "Friend added" });
-});
-
-// PROFESSIONAL MODE
-app.put("/api/users/professional", auth, async (req, res) => {
-  const user = await User.findById(req.user.id);
-
-  user.isProfessional = !user.isProfessional;
-  await user.save();
-
-  res.json({ isProfessional: user.isProfessional });
 });
 
 // -----------------------
