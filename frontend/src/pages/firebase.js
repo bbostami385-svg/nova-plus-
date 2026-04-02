@@ -1,17 +1,11 @@
 // firebase.js
 
-// 🔥 Import core
 import { initializeApp } from "firebase/app";
-
-// 🔥 Storage (for video/audio upload)
 import { getStorage } from "firebase/storage";
 
-// 🔥 Analytics (optional)
-import { getAnalytics } from "firebase/analytics";
+// ⚠️ Analytics optional (Vercel এ error এড়ানোর জন্য safe import)
+let analytics = null;
 
-// -----------------------
-// 🔥 CONFIG
-// -----------------------
 const firebaseConfig = {
   apiKey: "AIzaSyAQ1wNehf7efchAliA1ZTJdnKEiqbTww08",
   authDomain: "novaplus-app.firebaseapp.com",
@@ -22,18 +16,21 @@ const firebaseConfig = {
   measurementId: "G-4QXRE8K8KY"
 };
 
-// -----------------------
 // 🔥 INIT
-// -----------------------
 const app = initializeApp(firebaseConfig);
 
-// 🔥 STORAGE EXPORT
+// 🔥 STORAGE
 export const storage = getStorage(app);
 
-// 🔥 ANALYTICS (optional)
-let analytics;
+// 🔥 ANALYTICS (only browser)
 if (typeof window !== "undefined") {
-  analytics = getAnalytics(app);
+  import("firebase/analytics")
+    .then(({ getAnalytics }) => {
+      analytics = getAnalytics(app);
+    })
+    .catch(() => {
+      console.log("Analytics not supported");
+    });
 }
 
 export { app, analytics };
