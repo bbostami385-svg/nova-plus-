@@ -1,30 +1,41 @@
 import React, { useState } from "react";
 
-function StoryUpload() {
+const API = process.env.REACT_APP_API;
+
+function StoryUpload({ refresh }) {
   const [image, setImage] = useState("");
-  const token = localStorage.getItem("token");
+  const [video, setVideo] = useState("");
 
   const uploadStory = async () => {
-    await fetch("https://novaplus-social.onrender.com/api/stories", {
+    const token = localStorage.getItem("token");
+
+    await fetch(`${API}/api/stories`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer " + token
+        Authorization: "Bearer " + token,
       },
-      body: JSON.stringify({ image })
+      body: JSON.stringify({ image, video }),
     });
 
-    alert("Story uploaded 🚀");
+    setImage("");
+    setVideo("");
+    refresh(); // reload stories
   };
 
   return (
-    <div>
+    <div style={{ marginBottom: "10px" }}>
       <input
         placeholder="Image URL"
         value={image}
         onChange={(e) => setImage(e.target.value)}
       />
-      <button onClick={uploadStory}>Upload Story</button>
+      <input
+        placeholder="Video URL"
+        value={video}
+        onChange={(e) => setVideo(e.target.value)}
+      />
+      <button onClick={uploadStory}>Upload Story 📸</button>
     </div>
   );
 }
