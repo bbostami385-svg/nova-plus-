@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 
-// ✅ API from .env
 const API = process.env.REACT_APP_API;
 
 function Feed() {
@@ -9,6 +8,20 @@ function Feed() {
   const [category, setCategory] = useState("all");
   const [commentText, setCommentText] = useState({});
   const [showComments, setShowComments] = useState({});
+
+  // Emoji reactions
+  const reactions = ["👍", "❤️", "😂", "😮", "😢", "😡"];
+
+  const categories = [
+    "all",
+    "movies",
+    "music",
+    "drama",
+    "gaming",
+    "news",
+    "education",
+    "funny",
+  ];
 
   // -----------------------
   // GET POSTS
@@ -62,7 +75,7 @@ function Feed() {
   };
 
   // -----------------------
-  // LIKE POST
+  // LIKE (OLD)
   // -----------------------
   const likePost = async (id) => {
     const token = localStorage.getItem("token");
@@ -78,6 +91,28 @@ function Feed() {
       getPosts();
     } catch {
       console.log("Like error");
+    }
+  };
+
+  // -----------------------
+  // EMOJI REACTION
+  // -----------------------
+  const reactPost = async (id, emoji) => {
+    const token = localStorage.getItem("token");
+
+    try {
+      await fetch(`${API}/api/posts/${id}/react`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token,
+        },
+        body: JSON.stringify({ emoji }),
+      });
+
+      getPosts();
+    } catch {
+      console.log("Reaction error");
     }
   };
 
@@ -121,25 +156,23 @@ function Feed() {
 
       {/* CATEGORY BAR */}
       <div style={{ marginBottom: "15px" }}>
-        {["all", "news", "funny", "gaming", "music", "education"].map(
-          (cat) => (
-            <button
-              key={cat}
-              onClick={() => setCategory(cat)}
-              style={{
-                margin: "5px",
-                padding: "6px 12px",
-                borderRadius: "20px",
-                border: "none",
-                cursor: "pointer",
-                background: category === cat ? "black" : "#ccc",
-                color: category === cat ? "white" : "black",
-              }}
-            >
-              {cat}
-            </button>
-          )
-        )}
+        {categories.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategory(cat)}
+            style={{
+              margin: "5px",
+              padding: "6px 12px",
+              borderRadius: "20px",
+              border: "none",
+              cursor: "pointer",
+              background: category === cat ? "black" : "#ccc",
+              color: category === cat ? "white" : "black",
+            }}
+          >
+            {cat}
+          </button>
+        ))}
       </div>
 
       {/* CREATE POST */}
@@ -175,12 +208,30 @@ function Feed() {
             {/* TEXT */}
             <p>{post.text}</p>
 
-            {/* LIKE */}
+            {/* REACTIONS */}
+            <div style={{ marginTop: "10px" }}>
+              {reactions.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => reactPost(post._id, emoji)}
+                  style={{ marginRight: "5px", fontSize: "18px" }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+
+            {/* SHOW REACTION COUNT */}
+            <p>
+              Reactions: {post.reactions?.length || 0}
+            </p>
+
+            {/* LIKE BUTTON (optional) */}
             <button onClick={() => likePost(post._id)}>
               ❤️ Like ({post.likes?.length || 0})
             </button>
 
-            {/* COMMENT TOGGLE */}
+            {/* COMMENTS TOGGLE */}
             <button
               onClick={() =>
                 setShowComments({
@@ -210,7 +261,6 @@ function Feed() {
                 />
                 <button onClick={() => addComment(post._id)}>Send</button>
 
-                {/* COMMENT LIST */}
                 <div style={{ marginTop: "10px" }}>
                   {post.comments?.map((c, i) => (
                     <p key={i} style={{ fontSize: "14px" }}>
