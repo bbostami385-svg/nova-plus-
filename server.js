@@ -47,52 +47,6 @@ const UserSchema = new mongoose.Schema({
 });
 const User = mongoose.model("User", UserSchema);
 
-const PostSchema = new mongoose.Schema({
-  userId: String,
-  text: String,
-  image: String,
-  video: String,
-
-  likes: [String],
-
-  comments: [
-    {
-      userId: String,
-      text: String,
-      createdAt: { type: Date, default: Date.now },
-      replies: [
-        {
-          userId: String,
-          text: String,
-          createdAt: { type: Date, default: Date.now }
-        }
-      ]
-    }
-  ],
-
-  sharedFrom: { type: String, default: null },
-  createdAt: { type: Date, default: Date.now }
-});
-const Post = mongoose.model("Post", PostSchema);
-
-// Story
-const StorySchema = new mongoose.Schema({
-  userId: String,
-  image: String,
-  video: String,
-  createdAt: { type: Date, default: Date.now, expires: 86400 }
-});
-const Story = mongoose.model("Story", StorySchema);
-
-// Message
-const MessageSchema = new mongoose.Schema({
-  senderId: String,
-  receiverId: String,
-  text: String,
-  createdAt: { type: Date, default: Date.now }
-});
-const Message = mongoose.model("Message", MessageSchema);
-
 // -----------------------
 // AUTH MIDDLEWARE
 // -----------------------
@@ -134,7 +88,7 @@ app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email }); // ✅ FIXED
+    const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ msg: "User not found" });
 
     const ok = await bcrypt.compare(password, user.password);
@@ -154,157 +108,7 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // -----------------------
-// POSTS
-// -----------------------
-app.post("/api/posts", auth, async (req, res) => {
-  try {
-    const { text, image, video } = req.body;
-
-    const post = new Post({
-      userId: req.user.id,
-      text,
-      image,
-      video
-    });
-
-    await post.save();
-    res.json(post);
-
-  } catch {
-    res.status(500).json({ msg: "Error creating post" });
-  }
-});
-
-app.get("/api/posts", async (req, res) => {
-  const posts = await Post.find().sort({ createdAt: -1 });
-  res.json(posts);
-});
-
-app.put("/api/posts/:id/like", auth, async (req, res) => {
-  const post = await Post.findById(req.params.id);
-
-  if (!post.likes.includes(req.user.id)) {
-    post.likes.push(req.user.id);
-  } else {
-    post.likes = post.likes.filter(id => id !== req.user.id);
-  }
-
-  await post.save();
-  res.json(post);
-});
-
-// COMMENT
-app.post("/api/posts/:id/comment", auth, async (req, res) => {
-  const post = await Post.findById(req.params.id);
-
-  post.comments.push({
-    userId: req.user.id,
-    text: req.body.text
-  });
-
-  await post.save();
-  res.json(post);
-});
-
-// DELETE COMMENT
-app.delete("/api/posts/:postId/comment/:commentId", auth, async (req, res) => {
-  const post = await Post.findById(req.params.postId);
-
-  post.comments = post.comments.filter(
-    c => c._id.toString() !== req.params.commentId
-  );
-
-  await post.save();
-  res.json(post);
-});
-
-// REPLY COMMENT
-app.post("/api/posts/:postId/comment/:commentId/reply", auth, async (req, res) => {
-  const post = await Post.findById(req.params.postId);
-  const comment = post.comments.id(req.params.commentId);
-
-  comment.replies.push({
-    userId: req.user.id,
-    text: req.body.text
-  });
-
-  await post.save();
-  res.json(post);
-});
-
-// DELETE POST
-app.delete("/api/posts/:id", auth, async (req, res) => {
-  const post = await Post.findById(req.params.id);
-
-  if (post.userId !== req.user.id)
-    return res.status(403).json({ msg: "Not allowed" });
-
-  await post.deleteOne();
-  res.json({ msg: "Deleted" });
-});
-
-// SHARE
-app.post("/api/posts/:id/share", auth, async (req, res) => {
-  const original = await Post.findById(req.params.id);
-
-  const post = new Post({
-    userId: req.user.id,
-    text: original.text,
-    image: original.image,
-    video: original.video,
-    sharedFrom: original._id
-  });
-
-  await post.save();
-  res.json(post);
-});
-
-// -----------------------
-// STORY
-// -----------------------
-app.post("/api/stories", auth, async (req, res) => {
-  const story = new Story({
-    userId: req.user.id,
-    image: req.body.image,
-    video: req.body.video
-  });
-
-  await story.save();
-  res.json(story);
-});
-
-app.get("/api/stories", async (req, res) => {
-  const stories = await Story.find().sort({ createdAt: -1 });
-  res.json(stories);
-});
-
-// -----------------------
-// CHAT
-// -----------------------
-app.post("/api/messages", auth, async (req, res) => {
-  const msg = new Message({
-    senderId: req.user.id,
-    receiverId: req.body.receiverId,
-    text: req.body.text
-  });
-
-  await msg.save();
-  res.json(msg);
-});
-
-app.get("/api/messages/:userId", auth, async (req, res) => {
-  const msgs = await Message.find({
-    $or: [
-      { senderId: req.user.id, receiverId: req.params.userId },
-      { senderId: req.params.userId, receiverId: req.user.id }
-    ]
-  }).sort({ createdAt: 1 });
-
-  res.json(msgs);
-});
-
-// -----------------------
-// USERS
+// USERS (Follow / Friend / Mode)
 // -----------------------
 app.post("/api/users/:id/follow", auth, async (req, res) => {
   const user = await User.findById(req.params.id);
@@ -361,6 +165,12 @@ app.put("/api/users/professional", auth, async (req, res) => {
 
   res.json({ isProfessional: user.isProfessional });
 });
+
+// -----------------------
+// 🔥 ROUTERS (IMPORTANT)
+// -----------------------
+const postRoutes = require("./routes/postRoutes");
+app.use("/api/posts", postRoutes);
 
 // -----------------------
 app.get("/", (req, res) => {
