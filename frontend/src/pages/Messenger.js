@@ -8,11 +8,20 @@ const socket = io(API);
 
 function Messenger() {
   const [friends, setFriends] = useState([]);
+  const [onlineUsers, setOnlineUsers] = useState([]);
   const [currentChat, setCurrentChat] = useState(null);
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [media, setMedia] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [typingUser, setTypingUser] = useState("");
+
+  // 🔥 VIDEO CALL
+  const [stream, setStream] = useState(null);
+  const [call, setCall] = useState(null);
+
+  const myVideo = useRef();
+  const userVideo = useRef();
 
   const token = localStorage.getItem("token");
   const myId = localStorage.getItem("userId");
@@ -25,11 +34,15 @@ function Messenger() {
   // LOAD FRIENDS
   // -----------------------
   const loadFriends = async () => {
-    const res = await fetch(`${API}/api/users/friends`, {
-      headers: { Authorization: "Bearer " + token }
-    });
-    const data = await res.json();
-    setFriends(data);
+    try {
+      const res = await fetch(`${API}/api/users/friends`, {
+        headers: { Authorization: "Bearer " + token }
+      });
+      const data = await res.json();
+      setFriends(data);
+    } catch {
+      console.log("Friend load error");
+    }
   };
 
   useEffect(() => {
@@ -37,14 +50,19 @@ function Messenger() {
   }, []);
 
   // -----------------------
-  // SOCKET INIT
+  // SOCKET
   // -----------------------
   useEffect(() => {
     if (!myId) return;
 
     socket.emit("addUser", myId);
 
+    socket.on("getUsers", (users) => {
+      setOnlineUsers(users);
+    });
+
     socket.on("receiveMessage", (msg) => {
+      msg.status = "delivered";
       setMessages((prev) => [...prev, msg]);
     });
 
@@ -53,18 +71,20 @@ function Messenger() {
       setTimeout(() => setTypingUser(""), 1000);
     });
 
-    socket.on("seen", ({ senderId }) => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.senderId === senderId ? { ...m, status: "seen" } : m
-        )
-      );
+    socket.on("incomingCall", (data) => {
+      setCall(data);
+    });
+
+    socket.on("callAccepted", () => {
+      console.log("Call accepted");
     });
 
     return () => {
+      socket.off("getUsers");
       socket.off("receiveMessage");
       socket.off("typing");
-      socket.off("seen");
+      socket.off("incomingCall");
+      socket.off("callAccepted");
     };
   }, [myId]);
 
@@ -74,24 +94,20 @@ function Messenger() {
   const loadMessages = async (id) => {
     setCurrentChat(id);
 
-    // 🔥 join room
     socket.emit("joinRoom", {
       senderId: myId,
       receiverId: id
     });
 
-    // 🔥 seen trigger
-    socket.emit("seen", {
-      senderId: myId,
-      receiverId: id
-    });
-
-    const res = await fetch(`${API}/api/messages/${id}`, {
-      headers: { Authorization: "Bearer " + token }
-    });
-
-    const data = await res.json();
-    setMessages(data);
+    try {
+      const res = await fetch(`${API}/api/messages/${id}`, {
+        headers: { Authorization: "Bearer " + token }
+      });
+      const data = await res.json();
+      setMessages(data);
+    } catch {
+      console.log("Message load error");
+    }
   };
 
   // -----------------------
@@ -114,6 +130,7 @@ function Messenger() {
   // SEND MESSAGE
   // -----------------------
   const sendMessage = async () => {
+    if (!currentChat) return alert("Select user first");
     if (!text && !media) return;
 
     let fileUrl = "";
@@ -131,22 +148,25 @@ function Messenger() {
 
     socket.emit("sendMessage", msg);
 
-    await fetch(`${API}/api/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token
-      },
-      body: JSON.stringify(msg)
-    });
+    try {
+      await fetch(`${API}/api/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + token
+        },
+        body: JSON.stringify(msg)
+      });
+    } catch {}
 
     setMessages((prev) => [...prev, msg]);
     setText("");
     setMedia(null);
+    setPreview(null);
   };
 
   // -----------------------
-  // VOICE RECORD
+  // VOICE
   // -----------------------
   const startRecording = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -157,9 +177,18 @@ function Messenger() {
     };
 
     mediaRecorder.current.onstop = async () => {
-      const blob = new Blob(chunks.current, { type: "audio/mp3" });
+      const blob = new Blob(chunks.current);
       const url = await uploadFile(blob);
-      sendVoice(url);
+
+      const msg = {
+        senderId: myId,
+        receiverId: currentChat,
+        audio: url
+      };
+
+      socket.emit("sendMessage", msg);
+      setMessages((prev) => [...prev, msg]);
+
       chunks.current = [];
     };
 
@@ -170,27 +199,44 @@ function Messenger() {
     mediaRecorder.current.stop();
   };
 
-  const sendVoice = (url) => {
-    const msg = {
-      senderId: myId,
-      receiverId: currentChat,
-      audio: url,
-      status: "sent"
-    };
+  // -----------------------
+  // VIDEO CALL
+  // -----------------------
+  const startVideo = async () => {
+    const mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    });
 
-    socket.emit("sendMessage", msg);
-    setMessages((prev) => [...prev, msg]);
+    setStream(mediaStream);
+    myVideo.current.srcObject = mediaStream;
+  };
+
+  const callUser = () => {
+    if (!currentChat) return alert("Select user first");
+
+    socket.emit("callUser", {
+      from: myId,
+      to: currentChat
+    });
+  };
+
+  const acceptCall = () => {
+    socket.emit("acceptCall", {
+      from: myId,
+      to: call.from
+    });
   };
 
   return (
-    <div style={{ display: "flex", height: "100vh" }}>
+    <div style={{ display: "flex", height: "100vh", fontFamily: "Arial" }}>
 
       {/* FRIEND LIST */}
       <div style={{ width: "30%", borderRight: "1px solid gray" }}>
         <h3>Friends</h3>
         {friends.map((f) => (
           <div key={f._id} onClick={() => loadMessages(f._id)}>
-            🟢 {f.name}
+            {onlineUsers.includes(f._id) ? "🟢" : "⚪"} {f.name}
           </div>
         ))}
       </div>
@@ -200,28 +246,36 @@ function Messenger() {
         <h3>Chat 💬</h3>
 
         <div style={{ height: "70%", overflowY: "scroll" }}>
+          {messages.length === 0 && <p>No messages yet...</p>}
+
           {messages.map((m, i) => (
             <div key={i} style={{
               textAlign: m.senderId === myId ? "right" : "left"
             }}>
-              {m.text && <p>{m.text}</p>}
-              {m.media && <video src={m.media} controls width="200" />}
+              {m.text && (
+                <p style={{
+                  background: m.senderId === myId ? "#dcf8c6" : "#eee",
+                  padding: "8px",
+                  borderRadius: "10px",
+                  display: "inline-block"
+                }}>
+                  {m.text}
+                </p>
+              )}
+
+              {m.media && <video src={m.media} controls width="150" />}
               {m.audio && <audio src={m.audio} controls />}
 
-              {/* STATUS */}
               {m.senderId === myId && (
-                <span style={{ fontSize: "12px" }}>
+                <span>
                   {m.status === "sent" && "✔"}
                   {m.status === "delivered" && "✔✔"}
-                  {m.status === "seen" && "💙✔✔"}
                 </span>
               )}
             </div>
           ))}
 
-          {/* TYPING */}
-          {typingUser && <p><i>Typing...</i></p>}
-
+          {typingUser && <p><i>typing...</i></p>}
           <div ref={chatRef}></div>
         </div>
 
@@ -238,13 +292,41 @@ function Messenger() {
           }}
         />
 
-        <input type="file" onChange={(e) => setMedia(e.target.files[0])} />
+        <input
+          type="file"
+          onChange={(e) => {
+            const file = e.target.files[0];
+            setMedia(file);
+            setPreview(URL.createObjectURL(file));
+          }}
+        />
 
-        <button onClick={sendMessage}>Send 🚀</button>
+        {preview && <img src={preview} width="80" alt="preview" />}
+
+        <button onClick={sendMessage} disabled={!text && !media}>
+          Send 🚀
+        </button>
 
         <button onMouseDown={startRecording} onMouseUp={stopRecording}>
-          🎤 Hold
+          🎤
         </button>
+
+        {/* VIDEO CALL */}
+        <div>
+          <button onClick={startVideo}>🎥 Camera</button>
+          <button onClick={callUser}>📞 Call</button>
+        </div>
+
+        {call && (
+          <div>
+            <p>Incoming Call...</p>
+            <button onClick={acceptCall}>Accept</button>
+          </div>
+        )}
+
+        <video ref={myVideo} autoPlay muted width="120" />
+        <video ref={userVideo} autoPlay width="120" />
+
       </div>
     </div>
   );
