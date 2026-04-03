@@ -5,14 +5,18 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
-// 🔥 SOCKET
 const http = require("http");
 const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
 
-// 🔥 SOCKET INIT
+// -----------------------
+const PORT = process.env.PORT || 5000;
+
+// -----------------------
+// SOCKET INIT
+// -----------------------
 const io = new Server(server, {
   cors: {
     origin: "*"
@@ -20,32 +24,25 @@ const io = new Server(server, {
 });
 
 // -----------------------
-const PORT = process.env.PORT || 5000;
-
 app.use(cors());
 app.use(express.json());
 
 // -----------------------
-// MongoDB
+// MONGO DB
 // -----------------------
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected ✅"))
   .catch(err => console.log("MongoDB error ❌", err));
 
 // -----------------------
-// MODELS
+// USER MODEL
 // -----------------------
 const UserSchema = new mongoose.Schema({
   name: String,
   email: { type: String, unique: true },
   password: String,
-
-  followers: [String],
-  following: [String],
   friends: [String],
-
   isOnline: { type: Boolean, default: false },
-
   lastSeen: { type: Date, default: Date.now }
 });
 
@@ -68,17 +65,17 @@ const auth = (req, res, next) => {
 };
 
 // -----------------------
-// 🔥 ONLINE USERS MAP
+// ONLINE USERS MAP
 // -----------------------
 const onlineUsers = {};
 
 // -----------------------
-// 🔥 SOCKET SYSTEM (PRO)
+// SOCKET.IO
 // -----------------------
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // ✅ REGISTER USER
+  // REGISTER USER
   socket.on("addUser", async (userId) => {
     onlineUsers[userId] = socket.id;
 
@@ -89,13 +86,13 @@ io.on("connection", (socket) => {
     io.emit("getUsers", Object.keys(onlineUsers));
   });
 
-  // ✅ JOIN ROOM (PRIVATE CHAT)
+  // JOIN CHAT ROOM
   socket.on("joinRoom", ({ senderId, receiverId }) => {
     const roomId = [senderId, receiverId].sort().join("_");
     socket.join(roomId);
   });
 
-  // ✅ SEND MESSAGE
+  // SEND MESSAGE
   socket.on("sendMessage", (data) => {
     const roomId = [data.senderId, data.receiverId].sort().join("_");
 
@@ -105,21 +102,47 @@ io.on("connection", (socket) => {
     });
   });
 
-  // ✅ TYPING
+  // TYPING
   socket.on("typing", (data) => {
     const roomId = [data.senderId, data.receiverId].sort().join("_");
-
     socket.to(roomId).emit("typing", data);
   });
 
-  // ✅ SEEN STATUS
+  // SEEN
   socket.on("seen", (data) => {
     const roomId = [data.senderId, data.receiverId].sort().join("_");
-
     socket.to(roomId).emit("seen", data);
   });
 
-  // ❌ DISCONNECT
+  // ======================
+  // 🔥 VIDEO CALL SYSTEM
+  // ======================
+
+  socket.on("callUser", ({ from, to, signal }) => {
+    const toSocketId = onlineUsers[to];
+    if (toSocketId) {
+      io.to(toSocketId).emit("incomingCall", {
+        from,
+        signal
+      });
+    }
+  });
+
+  socket.on("answerCall", ({ to, signal }) => {
+    const toSocketId = onlineUsers[to];
+    if (toSocketId) {
+      io.to(toSocketId).emit("callAccepted", { signal });
+    }
+  });
+
+  socket.on("iceCandidate", ({ to, candidate }) => {
+    const toSocketId = onlineUsers[to];
+    if (toSocketId) {
+      io.to(toSocketId).emit("iceCandidate", { candidate });
+    }
+  });
+
+  // DISCONNECT
   socket.on("disconnect", async () => {
     for (const userId in onlineUsers) {
       if (onlineUsers[userId] === socket.id) {
@@ -150,7 +173,12 @@ app.post("/api/auth/signup", async (req, res) => {
     if (exist) return res.status(400).json({ msg: "Email exists" });
 
     const hash = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hash });
+
+    const user = new User({
+      name,
+      email,
+      password: hash
+    });
 
     await user.save();
 
@@ -185,10 +213,11 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 // -----------------------
-// USERS API
+// FRIENDS API
 // -----------------------
 app.get("/api/users/friends", auth, async (req, res) => {
   const me = await User.findById(req.user.id);
+
   const friends = await User.find({
     _id: { $in: me.friends }
   });
@@ -204,7 +233,7 @@ app.use("/api/posts", postRoutes);
 
 // -----------------------
 app.get("/", (req, res) => {
-  res.send("NovaPlus Social Backend 🚀");
+  res.send("NovaPlus Backend 🚀");
 });
 
 // -----------------------
