@@ -18,7 +18,10 @@ function Messenger() {
 
   const [typingUser, setTypingUser] = useState("");
 
-  // VIDEO CALL STATES
+  const [notifications, setNotifications] = useState([]);
+  const [stories, setStories] = useState([]);
+
+  // VIDEO CALL
   const [stream, setStream] = useState(null);
   const [call, setCall] = useState(null);
   const [callAccepted, setCallAccepted] = useState(false);
@@ -32,10 +35,8 @@ function Messenger() {
   const token = localStorage.getItem("token");
   const myId = localStorage.getItem("userId");
 
-  const chatRef = useRef();
-
   // -----------------------
-  // LOAD FRIENDS + GROUPS
+  // LOAD DATA
   // -----------------------
   useEffect(() => {
     const loadData = async () => {
@@ -49,6 +50,16 @@ function Messenger() {
           headers: { Authorization: "Bearer " + token }
         });
         setGroups(await g.json());
+
+        const s = await fetch(`${API}/api/story`, {
+          headers: { Authorization: "Bearer " + token }
+        });
+        setStories(await s.json());
+
+        const n = await fetch(`${API}/api/notification`, {
+          headers: { Authorization: "Bearer " + token }
+        });
+        setNotifications(await n.json());
 
       } catch (err) {
         console.log(err);
@@ -83,6 +94,10 @@ function Messenger() {
       setTimeout(() => setTypingUser(""), 1000);
     });
 
+    socket.on("newNotification", (notif) => {
+      setNotifications(prev => [notif, ...prev]);
+    });
+
     // CALL
     socket.on("incomingCall", ({ from, signal }) => {
       setCall({ from });
@@ -98,7 +113,7 @@ function Messenger() {
   }, [myId]);
 
   // -----------------------
-  // OPEN CHAT
+  // CHAT OPEN
   // -----------------------
   const openChat = (id) => {
     setCurrentChat(id);
@@ -112,14 +127,9 @@ function Messenger() {
     setMessages([]);
   };
 
-  // -----------------------
-  // OPEN GROUP
-  // -----------------------
   const openGroup = (group) => {
     setCurrentChat(group._id);
     setIsGroup(true);
-
-    socket.emit("joinGroup", group._id);
     setMessages([]);
   };
 
@@ -150,7 +160,7 @@ function Messenger() {
   };
 
   // -----------------------
-  // VIDEO STREAM START
+  // VIDEO
   // -----------------------
   const startVideo = async () => {
     const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -162,9 +172,6 @@ function Messenger() {
     myVideo.current.srcObject = mediaStream;
   };
 
-  // -----------------------
-  // CALL USER
-  // -----------------------
   const callUser = () => {
     const peer = new Peer({
       initiator: true,
@@ -187,9 +194,6 @@ function Messenger() {
     peerRef.current = peer;
   };
 
-  // -----------------------
-  // ACCEPT CALL
-  // -----------------------
   const acceptCall = () => {
     setCallAccepted(true);
 
@@ -214,20 +218,15 @@ function Messenger() {
     peerRef.current = peer;
   };
 
-  // -----------------------
-  // END CALL
-  // -----------------------
   const endCall = () => {
     setCallEnded(true);
     setCall(null);
     setCallAccepted(false);
 
-    if (peerRef.current) {
-      peerRef.current.destroy();
-    }
+    if (peerRef.current) peerRef.current.destroy();
 
     if (stream) {
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach(t => t.stop());
     }
   };
 
@@ -237,8 +236,30 @@ function Messenger() {
   return (
     <div style={{ display: "flex", height: "100vh" }}>
 
-      {/* LEFT */}
-      <div style={{ width: "30%", borderRight: "1px solid gray" }}>
+      {/* LEFT PANEL */}
+      <div style={{ width: "30%", borderRight: "1px solid gray", padding: "10px" }}>
+
+        <h3>🔔 Notifications ({notifications.length})</h3>
+
+        {notifications.map((n, i) => (
+          <div key={i}>{n.text}</div>
+        ))}
+
+        <h3>📖 Stories</h3>
+
+        <div style={{ display: "flex", overflowX: "auto" }}>
+          {stories.map((s, i) => (
+            <img
+              key={i}
+              src={s.media}
+              alt=""
+              width="60"
+              height="60"
+              style={{ borderRadius: "50%", margin: "5px" }}
+            />
+          ))}
+        </div>
+
         <h3>Friends</h3>
         {friends.map(f => (
           <div key={f._id} onClick={() => openChat(f._id)}>
@@ -252,21 +273,19 @@ function Messenger() {
             👥 {g.name}
           </div>
         ))}
+
       </div>
 
-      {/* RIGHT */}
+      {/* RIGHT CHAT */}
       <div style={{ width: "70%", padding: "10px" }}>
         <h3>Chat</h3>
 
         <div style={{ height: "60%", overflowY: "scroll" }}>
           {messages.map((m, i) => (
-            <div key={i} style={{
-              textAlign: m.senderId === myId ? "right" : "left"
-            }}>
-              <p>{m.text}</p>
+            <div key={i} style={{ textAlign: m.senderId === myId ? "right" : "left" }}>
+              {m.text}
             </div>
           ))}
-          <div ref={chatRef}></div>
         </div>
 
         <input
@@ -283,7 +302,7 @@ function Messenger() {
         <button onClick={sendMessage}>Send</button>
 
         <div>
-          <button onClick={startVideo}>🎥 Start Camera</button>
+          <button onClick={startVideo}>🎥 Start</button>
           <button onClick={callUser}>📞 Call</button>
         </div>
 
@@ -293,23 +312,15 @@ function Messenger() {
         {typingUser && <p>{typingUser}</p>}
       </div>
 
-      {/* INCOMING CALL */}
+      {/* CALL UI */}
       {call && !callAccepted && (
-        <div style={{
-          position: "fixed",
-          top: "20px",
-          right: "20px",
-          background: "#fff",
-          padding: "15px",
-          borderRadius: "10px"
-        }}>
+        <div style={{ position: "fixed", top: 20, right: 20, background: "#fff", padding: 10 }}>
           <p>📞 Incoming Call</p>
           <button onClick={acceptCall}>Accept</button>
           <button onClick={() => setCall(null)}>Reject</button>
         </div>
       )}
 
-      {/* VIDEO CALL FULL SCREEN */}
       {callAccepted && !callEnded && (
         <div style={{
           position: "fixed",
@@ -318,34 +329,20 @@ function Messenger() {
           width: "100%",
           height: "100%",
           background: "black",
-          zIndex: 9999,
           display: "flex",
-          flexDirection: "column",
           justifyContent: "center",
           alignItems: "center"
         }}>
           <video ref={userVideo} autoPlay style={{ width: "80%" }} />
+
           <video
             ref={myVideo}
             autoPlay
             muted
-            style={{
-              position: "absolute",
-              bottom: "100px",
-              right: "20px",
-              width: "120px"
-            }}
+            style={{ position: "absolute", bottom: 100, right: 20, width: 120 }}
           />
 
-          <button
-            onClick={endCall}
-            style={{
-              marginTop: "20px",
-              padding: "10px 20px",
-              background: "red",
-              color: "white"
-            }}
-          >
+          <button onClick={endCall} style={{ position: "absolute", bottom: 20 }}>
             ❌ End Call
           </button>
         </div>
