@@ -88,6 +88,7 @@ import messageRoutes from './routes/messageRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import musicRoutes from './routes/musicRoutes.js';
 import creatorToolsRoutes from './routes/creatorToolsRoutes.js';
+import achievementRoutes from './routes/achievementRoutes.js';
 
 // Register routes
 app.use('/api/auth', authRoutes);
@@ -97,6 +98,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/music', musicRoutes);
 app.use('/api/creator-tools', creatorToolsRoutes);
+app.use('/api/gamification', achievementRoutes);
 // app.use('/api/videos', videoRoutes);
 // app.use('/api/reels', reelRoutes);
 // app.use('/api/stories', storyRoutes);
