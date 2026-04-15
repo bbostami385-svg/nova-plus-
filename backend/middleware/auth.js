@@ -41,7 +41,6 @@ export const verifyFirebaseAuth = async (req, res, next) => {
     const decodedToken = await verifyFirebaseToken(token);
     req.firebaseUser = decodedToken;
 
-    // Find or create user in database
     let user = await User.findOne({ firebaseUid: decodedToken.uid });
     if (!user) {
       user = new User({
@@ -172,7 +171,6 @@ export const rateLimit = (maxRequests = 100, windowMs = 900000) => {
     const now = Date.now();
     const userRequests = requests.get(key) || [];
 
-    // Remove old requests outside the window
     const recentRequests = userRequests.filter((time) => now - time < windowMs);
 
     if (recentRequests.length >= maxRequests) {
@@ -185,7 +183,6 @@ export const rateLimit = (maxRequests = 100, windowMs = 900000) => {
     recentRequests.push(now);
     requests.set(key, recentRequests);
 
-    // Cleanup old entries
     if (requests.size > 10000) {
       requests.clear();
     }
@@ -193,6 +190,9 @@ export const rateLimit = (maxRequests = 100, windowMs = 900000) => {
     next();
   };
 };
+
+// ✅ ONLY FIX ADDED (NO OTHER CHANGE)
+export const authenticate = verifyToken;
 
 export default {
   verifyToken,
