@@ -1,57 +1,166 @@
-import React, { useState } from "react";
-import Splash from "./Splash";
-import Login from "./Login";
-import Signup from "./Signup";
-import Feed from "./Feed";
-import Chat from "./Chat";
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from 'react-query';
+import { Toaster } from 'react-hot-toast';
+import io from 'socket.io-client';
 
-// 👉 NEW IMPORTS
-import Messenger from "./pages/Messenger";
-import Profile from "./pages/Profile";
-import Friends from "./pages/Friends";
+// Pages
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import Home from './pages/Home';
+import Profile from './pages/Profile';
+import Messages from './pages/Messages';
+import Notifications from './pages/Notifications';
+import Explore from './pages/Explore';
+import Videos from './pages/Videos';
+import Reels from './pages/Reels';
+import Stories from './pages/Stories';
+
+// Components
+import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
+import ProtectedRoute from './components/ProtectedRoute';
+
+// Context
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
+
+const queryClient = new QueryClient();
+
+function AppContent() {
+  const { isAuthenticated, user, token } = useAuth();
+  const [socket, setSocket] = useState(null);
+
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000', {
+        auth: {
+          token,
+        },
+      });
+
+      newSocket.on('connect', () => {
+        console.log('Socket connected');
+      });
+
+      newSocket.on('disconnect', () => {
+        console.log('Socket disconnected');
+      });
+
+      setSocket(newSocket);
+
+      return () => {
+        newSocket.disconnect();
+      };
+    }
+  }, [isAuthenticated, token]);
+
+  return (
+    <div className="flex h-screen bg-gray-900 text-white">
+      {isAuthenticated && <Sidebar />}
+      
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {isAuthenticated && <Navbar socket={socket} />}
+        
+        <main className="flex-1 overflow-y-auto">
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Home socket={socket} />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/profile/:userId"
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/messages"
+              element={
+                <ProtectedRoute>
+                  <Messages socket={socket} />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/notifications"
+              element={
+                <ProtectedRoute>
+                  <Notifications />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/explore"
+              element={
+                <ProtectedRoute>
+                  <Explore />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/videos"
+              element={
+                <ProtectedRoute>
+                  <Videos />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/reels"
+              element={
+                <ProtectedRoute>
+                  <Reels />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/stories"
+              element={
+                <ProtectedRoute>
+                  <Stories />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        </main>
+      </div>
+      
+      <Toaster position="bottom-right" />
+    </div>
+  );
+}
 
 function App() {
-  const [page, setPage] = useState("splash");
-
-  const renderPage = () => {
-    switch (page) {
-      case "login":
-        return <Login goToSignup={() => setPage("signup")} goToFeed={() => setPage("feed")} />;
-
-      case "signup":
-        return <Signup goToLogin={() => setPage("login")} />;
-
-      case "feed":
-        return (
-          <>
-            <Feed />
-            <Chat />
-
-            {/* 🔥 NAV BUTTONS */}
-            <div style={{ marginTop: "20px" }}>
-              <button onClick={() => setPage("messenger")}>Messenger 💬</button>
-              <button onClick={() => setPage("profile")}>Profile 🔥</button>
-              <button onClick={() => setPage("friends")}>Friends 👥</button>
-            </div>
-          </>
-        );
-
-      // 👉 NEW PAGES
-      case "messenger":
-        return <Messenger />;
-
-      case "profile":
-        return <Profile />;
-
-      case "friends":
-        return <Friends />;
-
-      default:
-        return <Splash goToLogin={() => setPage("login")} />;
-    }
-  };
-
-  return <div>{renderPage()}</div>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <NotificationProvider>
+          <Router>
+            <AppContent />
+          </Router>
+        </NotificationProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
 }
 
 export default App;
