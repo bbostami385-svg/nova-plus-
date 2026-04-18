@@ -92,6 +92,9 @@ import achievementRoutes from './routes/achievementRoutes.js';
 import giftRoutes from './routes/giftRoutes.js';
 import sponsorshipRoutes from './routes/sponsorshipRoutes.js';
 import communityRoutes from './routes/communityRoutes.js';
+import marketplaceRoutes from './routes/marketplaceRoutes.js';
+import creatorFundRoutes from './routes/creatorFundRoutes.js';
+import privacyRoutes from './routes/privacyRoutes.js';
 
 // Register routes
 app.use('/api/auth', authRoutes);
@@ -105,6 +108,9 @@ app.use('/api/gamification', achievementRoutes);
 app.use('/api/gifts', giftRoutes);
 app.use('/api/sponsorships', sponsorshipRoutes);
 app.use('/api/community', communityRoutes);
+app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/creator-fund', creatorFundRoutes);
+app.use('/api/privacy', privacyRoutes);
 // app.use('/api/videos', videoRoutes);
 // app.use('/api/reels', reelRoutes);
 // app.use('/api/stories', storyRoutes);
