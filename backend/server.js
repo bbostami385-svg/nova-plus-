@@ -95,6 +95,8 @@ import communityRoutes from './routes/communityRoutes.js';
 import marketplaceRoutes from './routes/marketplaceRoutes.js';
 import creatorFundRoutes from './routes/creatorFundRoutes.js';
 import privacyRoutes from './routes/privacyRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import webhookRoutes from './routes/webhookRoutes.js';
 
 // Register routes
 app.use('/api/auth', authRoutes);
@@ -111,6 +113,8 @@ app.use('/api/community', communityRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
 app.use('/api/creator-fund', creatorFundRoutes);
 app.use('/api/privacy', privacyRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/webhooks', webhookRoutes);
 // app.use('/api/videos', videoRoutes);
 // app.use('/api/reels', reelRoutes);
 // app.use('/api/stories', storyRoutes);
