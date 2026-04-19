@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import { verifyFirebaseAuth } from '../config/firebase.js';
+import { verifyFirebaseAuth as verifyFirebaseAuthToken } from '../config/firebase.js';
 
 // Verify JWT Token
 export const verifyToken = (req, res, next) => {
@@ -38,7 +38,7 @@ export const verifyFirebaseAuth = async (req, res, next) => {
       });
     }
 
-    const decodedToken = await verifyFirebaseAuth(token);
+    const decodedToken = await verifyFirebaseAuthToken(token);
     req.firebaseUser = decodedToken;
 
     let user = await User.findOne({ firebaseUid: decodedToken.uid });
