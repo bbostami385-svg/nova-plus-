@@ -24,6 +24,12 @@ app.use(express.json());
 console.log("Connecting to MongoDB...");
 console.log("ENV:", process.env.MONGO_URI); // 🔥 debug
 
+// ✅ FIX (only added this)
+if (!process.env.MONGO_URI) {
+  console.log("❌ MONGO_URI environment variable is not defined");
+  process.exit(1);
+}
+
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB connected ✅"))
   .catch(err => {
@@ -42,7 +48,6 @@ const UserSchema = new mongoose.Schema({
   isOnline: { type: Boolean, default: false },
   lastSeen: { type: Date, default: Date.now },
 
-  // 🔥 FIX (profile support)
   bio: String,
   avatar: String
 });
@@ -141,9 +146,7 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("typing", data);
   });
 
-  // =====================
   // VIDEO CALL
-  // =====================
   socket.on("callUser", ({ from, to, signal }) => {
     const toSocket = onlineUsers[to];
     if (toSocket) {
@@ -158,9 +161,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // =====================
   // DISCONNECT
-  // =====================
   socket.on("disconnect", async () => {
     for (const userId in onlineUsers) {
       if (onlineUsers[userId] === socket.id) {
@@ -171,7 +172,7 @@ io.on("connection", (socket) => {
           lastSeen: new Date()
         });
 
-        break; // 🔥 FIX
+        break;
       }
     }
 
