@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
-import Monetization from '../models/Monetization.js';
+import MonetizationDashboard from '../models/MonetizationDashboard.js';
 import User from '../models/User.js';
 
 const router = express.Router();
@@ -21,10 +21,10 @@ router.post('/enable', authenticate, async (req, res) => {
       });
     }
 
-    let monetization = await Monetization.findOne({ creator: req.userId });
+    let monetization = await MonetizationDashboard.findOne({ creator: req.userId });
 
     if (!monetization) {
-      monetization = new Monetization({
+      monetization = new MonetizationDashboard({
         creator: req.userId,
         bankAccount,
         taxId,
@@ -59,7 +59,7 @@ router.post('/enable', authenticate, async (req, res) => {
  */
 router.get('/earnings', authenticate, async (req, res) => {
   try {
-    const monetization = await Monetization.findOne({ creator: req.userId });
+    const monetization = await MonetizationDashboard.findOne({ creator: req.userId });
 
     if (!monetization) {
       return res.status(404).json({
@@ -102,7 +102,7 @@ router.post('/withdraw', authenticate, async (req, res) => {
       });
     }
 
-    const monetization = await Monetization.findOne({ creator: req.userId });
+    const monetization = await MonetizationDashboard.findOne({ creator: req.userId });
 
     if (!monetization) {
       return res.status(404).json({
